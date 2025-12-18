@@ -1,8 +1,11 @@
-termux-sqlite3
+# termux-sqlite3
 
-https://img.shields.io/badge/Termux-Android-00B0F0?style=for-the-badge&logo=android
-https://img.shields.io/badge/Node.js-18+-339933?style=for-the-badge&logo=nodedotjs
-https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge
+![Termux](https://img.shields.io/badge/Termux-Android-00B0F0?style=for-the-badge&logo=android)
+![Node.js](https://img.shields.io/badge/Node.js-18+-339933?style=for-the-badge&logo=nodedotjs)
+![SQLite](https://img.shields.io/badge/SQLite-3-003B57?style=for-the-badge&logo=sqlite)
+![License](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)
+
+`termux-sqlite3` adalah wrapper SQLite berbasis JavaScript murni (JS-only) yang dirancang khusus untuk lingkungan **Termux** di Android.
 
 termux-sqlite3 adalah wrapper SQLite berbasis JavaScript murni (JS-only) yang dirancang khusus untuk lingkungan Termux di Android. Library ini memberikan pengalaman pengembangan yang serupa dengan better-sqlite3, namun tanpa memerlukan proses kompilasi modul binari (native addons) yang seringkali sulit dilakukan di perangkat seluler.
 
