@@ -1,11 +1,33 @@
 {
-  "name": "@renpwn/termux-sqlite3",
+  "name": "termux-sqlite3",
   "version": "1.0.1",
   "description": "SQLite JS-only engine for Termux Android (better-sqlite3-like)",
   "main": "index.js",
   "exports": {
     ".": "./index.js",
-    "./debug": "./lib/debug.js"
+    "./debug": "./lib/debug.js",
+    "./memory": "./lib/memory.js"
   },
-  "license": "MIT"
+  "keywords": [
+    "sqlite",
+    "sqlite3",
+    "termux",
+    "android",
+    "database",
+    "better-sqlite3"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/renpwn/termux-sqlite3"
+  },
+  "bugs": {
+    "url": "https://github.com/renpwn/termux-sqlite3/issues"
+  },
+  "homepage": "https://github.com/renpwn/termux-sqlite3#readme",
+  "engines": {
+    "node": ">=12.0.0"
+  },
+  "dependencies": {}
 }
