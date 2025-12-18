@@ -1,0 +1,11 @@
+{
+  "name": "termux-sqlite3",
+  "version": "1.0.0",
+  "description": "SQLite JS-only engine for Termux Android (better-sqlite3-like)",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./debug": "./lib/debug.js"
+  },
+  "license": "MIT"
+}
