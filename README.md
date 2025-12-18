@@ -686,15 +686,17 @@ npm run benchmark
 npm run lint
 ```
 
+---
+
 📄 Lisensi
 
 Proyek ini dilisensikan di bawah MIT License - lihat file LICENSE untuk detail.
 
-🙏 Acknowledgements
+## 🙏 Acknowledgements
 
-· SQLite - Database engine yang luar biasa
-· Termux - Terminal emulator untuk Android
-· better-sqlite3 - Inspirasi untuk API design
+* **SQLite** - Database engine yang luar biasa.
+* **Termux** - Terminal emulator untuk Android.
+* **better-sqlite3** - Inspirasi utama untuk desain API.
 
 📞 Support
 
