@@ -5,125 +5,160 @@ const Cursor = require("./cursor")
 class Statement {
   constructor(engine, sql) {
     this.engine = engine
-    this.sql = sql.trim()
-    this.boundSQL = null
+    this.originalSQL = sql.trim()
+    this.sql = this.originalSQL
     this.orderInfo = this._parseOrderBy()
+    this.hasLimit = this._detectLimit()
+    this.tableInfo = null
   }
 
   _parseOrderBy() {
-    const orderMatch = this.sql.match(/ORDER\s+BY\s+(.+?)(?:\s+(ASC|DESC))?(?:\s*,\s*(.+))?$/i)
-    if (!orderMatch) return null
+    // Remove comments first
+    const sqlWithoutComments = this.sql
+      .replace(/--.*$/gm, '')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .trim()
     
+    // Find ORDER BY clause, handling nested parentheses
+    let depth = 0
+    let orderByIndex = -1
+    
+    for (let i = 0; i < sqlWithoutComments.length; i++) {
+      const char = sqlWithoutComments[i]
+      if (char === '(') depth++
+      else if (char === ')') depth--
+      else if (depth === 0 && sqlWithoutComments.substring(i).toUpperCase().startsWith('ORDER BY')) {
+        orderByIndex = i
+        break
+      }
+    }
+    
+    if (orderByIndex === -1) return null
+    
+    const orderByClause = sqlWithoutComments.substring(orderByIndex + 8).trim()
+    
+    // Parse columns with direction
     const columns = []
-    const raw = orderMatch[1] + (orderMatch[2] ? ` ${orderMatch[2]}` : '')
+    let current = ''
+    let inQuotes = false
+    let quoteChar = null
     
-    // Parse multiple columns
-    const columnParts = raw.split(',').map(s => s.trim())
+    for (let i = 0; i < orderByClause.length; i++) {
+      const char = orderByClause[i]
+      
+      if ((char === "'" || char === '"') && (i === 0 || orderByClause[i-1] !== '\\')) {
+        if (!inQuotes) {
+          inQuotes = true
+          quoteChar = char
+        } else if (char === quoteChar) {
+          inQuotes = false
+        }
+      }
+      
+      if (!inQuotes && char === ',') {
+        const parsed = this._parseOrderColumn(current.trim())
+        if (parsed) columns.push(parsed)
+        current = ''
+      } else {
+        current += char
+      }
+    }
     
-    columnParts.forEach(part => {
-      const [col, direction] = part.split(/\s+/)
-      columns.push({
-        name: col,
-        direction: (direction || 'ASC').toUpperCase()
-      })
-    })
+    if (current.trim()) {
+      const parsed = this._parseOrderColumn(current.trim())
+      if (parsed) columns.push(parsed)
+    }
+    
+    if (columns.length === 0) return null
     
     return {
-      raw,
+      raw: orderByClause.split('LIMIT')[0].trim(),
       columns,
       isMultiColumn: columns.length > 1
     }
   }
 
-  getCursorKey(row) {
-    if (!this.orderInfo) {
-      // Try to use rowid or primary key as fallback
-      return row.rowid || row.id || JSON.stringify(row)
-    }
+  _parseOrderColumn(columnStr) {
+    const parts = columnStr.split(/\s+/)
+    if (parts.length === 0) return null
     
-    if (this.orderInfo.isMultiColumn) {
-      return this.orderInfo.columns.map(col => row[col.name])
-    }
+    const name = parts[0].replace(/^["']|["']$/g, '')
+    const direction = parts[1] ? parts[1].toUpperCase() : 'ASC'
     
-    return row[this.orderInfo.columns[0].name]
-  }
-
-  buildPaginationSQL(baseSQL, lastKey, limit) {
-    if (!this.orderInfo || !lastKey) {
-      return `${baseSQL} LIMIT ${limit}`
-    }
-    
-    const mainCol = this.orderInfo.columns[0]
-    const operator = mainCol.direction === 'DESC' ? '<' : '>'
-    
-    if (this.orderInfo.isMultiColumn) {
-      // Complex pagination for multiple columns
-      const conditions = []
-      let paramIndex = 0
-      
-      for (let i = 0; i < this.orderInfo.columns.length; i++) {
-        const col = this.orderInfo.columns[i]
-        const keyPart = Array.isArray(lastKey) ? lastKey[i] : lastKey
-        
-        if (i === this.orderInfo.columns.length - 1) {
-          conditions.push(`${col.name} ${operator} ${this._valueToSQL(keyPart)}`)
-        } else {
-          const nextKey = Array.isArray(lastKey) ? lastKey[i + 1] : null
-          conditions.push(`${col.name} > ${this._valueToSQL(keyPart)}`)
-        }
-      }
-      
-      return `
-        SELECT * FROM (${baseSQL}) 
-        WHERE ${conditions.join(' OR ')}
-        ORDER BY ${this.orderInfo.raw}
-        LIMIT ${limit}
-      `
-    } else {
-      // Simple pagination for single column
-      return `
-        SELECT * FROM (${baseSQL})
-        WHERE ${mainCol.name} ${operator} ${this._valueToSQL(lastKey)}
-        ORDER BY ${this.orderInfo.raw}
-        LIMIT ${limit}
-      `
+    return {
+      name,
+      direction: direction === 'DESC' ? 'DESC' : 'ASC',
+      collate: parts[2] === 'COLLATE' ? parts[3] : null
     }
   }
 
-  _valueToSQL(value) {
-    if (value === null || value === undefined) return 'NULL'
-    if (typeof value === 'number') return String(value)
-    if (typeof value === 'boolean') return value ? '1' : '0'
-    return `'${String(value).replace(/'/g, "''")}'`
+  _detectLimit() {
+    const limitMatch = this.sql.toUpperCase().match(/LIMIT\s+(\d+)(?:\s*,\s*(\d+))?(?:\s+OFFSET\s+(\d+))?$/i)
+    if (!limitMatch) return null
+    
+    return {
+      limit: parseInt(limitMatch[1]) || null,
+      offset: parseInt(limitMatch[2] || limitMatch[3] || 0)
+    }
   }
 
   async get(params = {}) {
-    const bounded = bind(this.sql + " LIMIT 1", params)
+    const bounded = bind(this.originalSQL + " LIMIT 1", params)
     const rows = await this.engine.query(bounded)
     return rows[0] || null
   }
 
   async all(params = {}) {
-    const bounded = bind(this.sql, params)
+    const bounded = bind(this.originalSQL, params)
     return this.engine.query(bounded)
   }
 
   async run(params = {}) {
-    const bounded = bind(this.sql, params)
+    const bounded = bind(this.originalSQL, params)
     await this.engine.exec(bounded)
     
-    // Get affected rows
-    const changes = await this.engine.query("SELECT changes() as changes")
-    return { changes: changes[0]?.changes || 0 }
+    // Try to get changes count
+    try {
+      const changes = await this.engine.query("SELECT changes() as changes, last_insert_rowid() as lastId")
+      return {
+        changes: changes[0]?.changes || 0,
+        lastInsertRowid: changes[0]?.lastId || 0
+      }
+    } catch {
+      return { changes: 0, lastInsertRowid: 0 }
+    }
   }
 
   iterate(options = {}) {
     return new Cursor(this, options).iterate()
   }
 
-  explain(params = {}) {
-    const bounded = bind(this.sql, params)
+  async explain(params = {}) {
+    const bounded = bind(this.originalSQL, params)
     return this.engine.query(explainSQL(bounded))
+  }
+
+  async columns() {
+    if (!this.tableInfo) {
+      // Extract table name from simple queries
+      const tableMatch = this.originalSQL.match(/FROM\s+(["`]?)(\w+)\1/i)
+      if (tableMatch) {
+        const tableName = tableMatch[2]
+        try {
+          const pragma = await this.engine.query(`PRAGMA table_info(${tableName})`)
+          this.tableInfo = pragma.map(col => ({
+            name: col.name,
+            type: col.type,
+            notnull: col.notnull === 1,
+            defaultValue: col.dflt_value,
+            pk: col.pk === 1
+          }))
+        } catch {
+          this.tableInfo = []
+        }
+      }
+    }
+    return this.tableInfo || []
   }
 }
 

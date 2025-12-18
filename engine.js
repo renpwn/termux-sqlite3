@@ -1,129 +1,257 @@
 const { spawn } = require("child_process")
 const { trace } = require("./lib/debug")
+const EventEmitter = require("events")
 
-class Engine {
-  constructor(filename) {
+class Engine extends EventEmitter {
+  constructor(filename, options = {}) {
+    super()
     this.filename = filename
-    this.proc = null
+    this.options = {
+      timeout: 5000,
+      maxRetries: 3,
+      poolSize: 1,
+      busyTimeout: 5000,
+      ...options
+    }
+    
+    this.processPool = []
     this.queue = []
-    this.buffer = ""
-    this.isReady = false
-    this.readyPromise = new Promise((resolve) => {
-      this.readyResolve = resolve
-    })
+    this.activeQueries = 0
+    this.isClosing = false
     
-    this._initProcess()
+    // Initialize process pool
+    this._initPool()
   }
 
-  _initProcess() {
-    this.proc = spawn("sqlite3", ["-json", this.filename], {
-      stdio: ["pipe", "pipe", "pipe"]
-    })
+  async _initPool() {
+    for (let i = 0; i < this.options.poolSize; i++) {
+      await this._createProcess()
+    }
+  }
 
-    this.proc.stdout.on("data", (chunk) => {
-      this.buffer += chunk.toString()
-      this._processBuffer()
-    })
+  async _createProcess() {
+    return new Promise((resolve, reject) => {
+      const proc = spawn("sqlite3", ["-json", this.filename], {
+        stdio: ["pipe", "pipe", "pipe"],
+        env: { ...process.env, SQLITE_TMPDIR: "/data/data/com.termux/files/usr/tmp" }
+      })
 
-    this.proc.stderr.on("data", (data) => {
-      console.error("[SQLite Error]", data.toString())
-    })
-
-    this.proc.on("error", (err) => {
-      console.error("[Process Error]", err)
-      this._rejectAll(err)
-    })
-
-    this.proc.on("exit", (code) => {
-      if (code !== 0) {
-        this._rejectAll(new Error(`Process exited with code ${code}`))
+      const processObj = {
+        proc,
+        isBusy: false,
+        buffer: "",
+        resolve: null,
+        reject: null,
+        currentQuery: null,
+        lastUsed: Date.now()
       }
-    })
 
-    // Set timeout and enable JSON mode
-    this.proc.stdin.write(".timeout 5000\n")
-    this.proc.stdin.write(".mode json\n")
-    
-    // Test connection
-    this.proc.stdin.write("SELECT 1 as test;\n")
-    
-    // Mark as ready after successful test
-    setTimeout(() => {
-      this.isReady = true
-      this.readyResolve()
-    }, 100)
-  }
+      proc.stdout.on("data", (chunk) => {
+        processObj.buffer += chunk.toString()
+        this._processBuffer(processObj)
+      })
 
-  _processBuffer() {
-    const lines = this.buffer.split("\n")
-    
-    // Keep incomplete line in buffer
-    this.buffer = lines.pop() || ""
-    
-    for (const line of lines) {
-      if (line.trim() === "") continue
-      
-      const job = this.queue.shift()
-      if (!job) continue
-      
-      try {
-        if (line === "[]") {
-          job.resolve([])
-        } else {
-          const parsed = JSON.parse(line)
-          job.resolve(Array.isArray(parsed) ? parsed : [parsed])
+      proc.stderr.on("data", (data) => {
+        const error = data.toString().trim()
+        if (error && !error.includes("Warning:")) {
+          this.emit("error", new Error(`SQLite: ${error}`))
+          if (processObj.reject) {
+            processObj.reject(new Error(error))
+          }
         }
-      } catch (e) {
-        job.reject(new Error(`Failed to parse JSON: ${line}`))
+      })
+
+      proc.on("error", (err) => {
+        this.emit("error", err)
+        if (processObj.reject) {
+          processObj.reject(err)
+        }
+        this._restartProcess(processObj)
+      })
+
+      proc.on("exit", (code) => {
+        if (code !== 0 && !this.isClosing) {
+          this.emit("error", new Error(`Process exited with code ${code}`))
+          this._restartProcess(processObj)
+        }
+      })
+
+      // Initialize SQLite settings
+      proc.stdin.write(`.timeout ${this.options.busyTimeout}\n`)
+      proc.stdin.write(".mode json\n")
+      proc.stdin.write(".headers off\n")
+      proc.stdin.write("PRAGMA journal_mode = WAL;\n")
+      proc.stdin.write("PRAGMA synchronous = NORMAL;\n")
+      proc.stdin.write("PRAGMA foreign_keys = ON;\n")
+
+      processObj.proc.stdin.write("SELECT 1 as initialized;\n")
+      
+      const checkInitialized = (data) => {
+        if (data.toString().includes('initialized')) {
+          proc.stdout.removeListener('data', checkInitialized)
+          this.processPool.push(processObj)
+          resolve(processObj)
+        }
       }
+      
+      proc.stdout.once('data', checkInitialized)
+      
+      // Timeout for initialization
+      setTimeout(() => {
+        if (!processObj.resolve) {
+          this._restartProcess(processObj)
+          reject(new Error("Process initialization timeout"))
+        }
+      }, 5000)
+    })
+  }
+
+  _processBuffer(processObj) {
+    const lines = processObj.buffer.split('\n')
+    
+    for (let i = 0; i < lines.length - 1; i++) {
+      const line = lines[i].trim()
+      if (!line) continue
+      
+      if (processObj.resolve) {
+        try {
+          const result = line === "[]" ? [] : JSON.parse(line)
+          processObj.resolve(Array.isArray(result) ? result : [result])
+          
+          // Reset process state
+          processObj.resolve = null
+          processObj.reject = null
+          processObj.currentQuery = null
+          processObj.isBusy = false
+          processObj.buffer = ""
+          processObj.lastUsed = Date.now()
+          
+          // Process next query in queue
+          this._processQueue()
+        } catch (err) {
+          if (processObj.reject) {
+            processObj.reject(new Error(`JSON Parse Error: ${err.message}, Data: ${line}`))
+          }
+        }
+      }
+    }
+    
+    // Keep last incomplete line
+    processObj.buffer = lines[lines.length - 1]
+  }
+
+  async _getAvailableProcess() {
+    // Find idle process
+    let process = this.processPool.find(p => !p.isBusy)
+    
+    if (!process && this.processPool.length < this.options.poolSize) {
+      // Create new process if under pool limit
+      process = await this._createProcess()
+    }
+    
+    return process
+  }
+
+  async _executeWithRetry(sql, retries = 0) {
+    try {
+      const process = await this._getAvailableProcess()
+      if (!process) {
+        throw new Error("No available SQLite process")
+      }
+
+      return new Promise((resolve, reject) => {
+        // Set timeout for query
+        const timeoutId = setTimeout(() => {
+          if (process.reject) {
+            process.reject(new Error(`Query timeout after ${this.options.timeout}ms`))
+          }
+          this._restartProcess(process)
+        }, this.options.timeout)
+
+        process.isBusy = true
+        process.currentQuery = sql
+        process.resolve = (data) => {
+          clearTimeout(timeoutId)
+          resolve(data)
+        }
+        process.reject = (err) => {
+          clearTimeout(timeoutId)
+          reject(err)
+        }
+
+        trace(sql)
+        process.proc.stdin.write(sql + ";\n")
+      })
+    } catch (error) {
+      if (retries < this.options.maxRetries) {
+        await new Promise(resolve => setTimeout(resolve, 100 * (retries + 1)))
+        return this._executeWithRetry(sql, retries + 1)
+      }
+      throw error
     }
   }
 
   async query(sql) {
-    await this.readyPromise
+    if (this.isClosing) {
+      throw new Error("Database is closing")
+    }
     
-    trace(sql)
-    
-    return new Promise((resolve, reject) => {
-      this.queue.push({ resolve, reject })
-      
-      // Ensure SQL ends with semicolon
-      const formattedSQL = sql.trim().endsWith(";") ? sql : sql + ";"
-      this.proc.stdin.write(formattedSQL + "\n")
-    })
+    return this._executeWithRetry(sql)
   }
 
   async exec(sql) {
-    await this.readyPromise
+    if (this.isClosing) {
+      throw new Error("Database is closing")
+    }
     
-    trace(sql)
-    
-    return new Promise((resolve, reject) => {
-      const callback = (data) => {
-        resolve()
-      }
-      
-      this.queue.push({ resolve: callback, reject })
-      
-      const formattedSQL = sql.trim().endsWith(";") ? sql : sql + ";"
-      this.proc.stdin.write(formattedSQL + "\n")
-    })
+    await this._executeWithRetry(sql)
+    return { changes: 0 } // SQLite CLI doesn't return changes count
   }
 
-  _rejectAll(error) {
-    while (this.queue.length > 0) {
-      const job = this.queue.shift()
-      if (job && job.reject) {
-        job.reject(error)
+  async vacuum() {
+    return this.exec("VACUUM")
+  }
+
+  async pragma(command) {
+    const result = await this.query(`PRAGMA ${command}`)
+    return result[0] || null
+  }
+
+  _restartProcess(processObj) {
+    const index = this.processPool.indexOf(processObj)
+    if (index > -1) {
+      this.processPool.splice(index, 1)
+      
+      if (processObj.proc && !processObj.proc.killed) {
+        processObj.proc.stdin.end()
+        processObj.proc.kill('SIGKILL')
       }
+      
+      // Try to create new process
+      this._createProcess().catch(err => {
+        this.emit("error", err)
+      })
     }
   }
 
-  close() {
-    if (this.proc && !this.proc.killed) {
-      this.proc.stdin.end()
-      this.proc.kill()
+  async close() {
+    this.isClosing = true
+    
+    // Wait for active queries
+    while (this.processPool.some(p => p.isBusy)) {
+      await new Promise(resolve => setTimeout(resolve, 100))
     }
+    
+    // Close all processes
+    for (const process of this.processPool) {
+      if (process.proc && !process.proc.killed) {
+        process.proc.stdin.end(".exit\n")
+        process.proc.kill()
+      }
+    }
+    
+    this.processPool = []
+    this.emit("closed")
   }
 }
 
