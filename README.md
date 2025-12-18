@@ -11,24 +11,26 @@ termux-sqlite3 adalah wrapper SQLite berbasis JavaScript murni (JS-only) yang di
 
 Library ini bekerja dengan melakukan spawning terhadap proses sqlite3 sistem dan berkomunikasi melalui antarmuka JSON yang efisien.
 
-✨ Fitur Utama
+## ✨ Fitur Utama
 
-· 🚫 Zero Native Dependencies: Tidak memerlukan node-gyp, Python, atau kompilasi C++; hanya membutuhkan binary sqlite3 terinstal di Termux
-· 📚 API Mirip Better-sqlite3: Menggunakan pola prepare(), get(), dan all() yang familiar
-· 💾 Manajemen Memori Pintar: Dilengkapi dengan sistem cursor yang menyesuaikan ukuran pengambilan data (chunk size) secara dinamis berdasarkan penggunaan RAM perangkat
-· 🔒 Transaksi Terintegrasi: Dukungan bawaan untuk transaksi atomik dengan automatic rollback jika terjadi kesalahan
-· 🛡️ SQL Binding Aman: Mencegah SQL Injection dengan sistem binding parameter menggunakan sintaks :key atau ?
-· 🔍 Query Plan Analysis: Memudahkan optimasi query dengan fitur explain()
-· ⚡ Performa Optimal: Menggunakan JSON streaming untuk komunikasi yang efisien dengan proses SQLite
-· 🔄 Connection Pooling: Mendukung multiple connections untuk concurrent queries
+* **🚫 Zero Native Dependencies:** Tidak memerlukan `node-gyp`, Python, atau kompilasi C++; hanya membutuhkan binary `sqlite3` terinstal di Termux.
+* **📚 API Mirip Better-sqlite3:** Menggunakan pola `prepare()`, `get()`, dan `all()` yang familiar.
+* **💾 Manajemen Memori Pintar:** Dilengkapi dengan sistem cursor yang menyesuaikan ukuran pengambilan data (*chunk size*) secara dinamis berdasarkan penggunaan RAM.
+* **🔒 Transaksi Terintegrasi:** Dukungan bawaan untuk transaksi atomik dengan *automatic rollback* jika terjadi kesalahan.
+* **🛡️ SQL Binding Aman:** Mencegah SQL Injection dengan sistem binding parameter menggunakan sintaks `:key` atau `?`.
+* **🔍 Query Plan Analysis:** Memudahkan optimasi query dengan fitur `explain()`.
+* **⚡ Performa Optimal:** Menggunakan JSON streaming untuk komunikasi yang efisien dengan proses SQLite.
+* **🔄 Connection Pooling:** Mendukung multiple connections untuk *concurrent queries*.
 
-📋 Prasyarat
 
-· Termux (dari F-Droid untuk versi terbaru)
-· Node.js (v14 atau lebih baru)
-· SQLite3 binary
+## 📋 Prasyarat
 
-🚀 Instalasi
+* **Termux** (Disarankan versi [F-Droid](https://f-droid.org/en/packages/com.termux/) untuk update terbaru)
+* **Node.js** (Versi 14 atau yang lebih baru)
+* **SQLite3 Binary** (Terinstal di sistem Termux)
+
+
+## 🚀 Instalasi
 
 1. Instal Dependensi di Termux
 
@@ -54,7 +56,7 @@ npm install https://github.com/renpwn/termux-sqlite3
 npm install termux-sqlite3
 ```
 
-📖 Quick Start
+## 📖 Quick Start
 
 Inisialisasi Database
 
@@ -123,24 +125,22 @@ await db.run(
 );
 ```
 
-🛠️ API Reference Lengkap
+## 🛠️ API Reference Lengkap
 
-Kelas Database
+### Kelas Database
 
-new Database(filename, options)
-
+#### `new Database(filename, options)`
 Membuka koneksi ke database SQLite.
 
-Parameter:
+**Parameter:**
+* **`filename`** (String): Path ke file database.
+* **`options`** (Object, opsional):
+    * **`timeout`** (Number): Timeout query dalam ms (default: `5000`).
+    * **`poolSize`** (Number): Jumlah koneksi paralel (default: `1`).
+    * **`busyTimeout`** (Number): Waktu tunggu saat database locked (default: `5000`).
+    * **`adaptiveChunking`** (Boolean): Aktifkan adaptive memory (default: `true`).
 
-· filename (String): Path ke file database
-· options (Object, opsional):
-  · timeout (Number): Timeout query dalam ms (default: 5000)
-  · poolSize (Number): Jumlah koneksi paralel (default: 1)
-  · busyTimeout (Number): Waktu tunggu saat database locked (default: 5000)
-  · adaptiveChunking (Boolean): Aktifkan adaptive memory (default: true)
-
-Contoh:
+**Contoh:**
 
 ```javascript
 const db = new Database('/data/data/com.termux/files/home/myapp.db', {
@@ -260,7 +260,7 @@ const plan = await stmt.explain();
 console.log('Query Plan:', plan);
 ```
 
-🔄 Iterasi Data Besar dengan Cursor
+## 🔄 Iterasi Data Besar dengan Cursor
 
 Untuk dataset yang besar, gunakan cursor untuk menghindari kehabisan memori:
 
@@ -291,7 +291,7 @@ for await (const row of stmt.iterate(options)) {
 }
 ```
 
-💰 Manajemen Transaksi
+## 💰 Manajemen Transaksi
 
 Transaksi Sederhana
 
@@ -372,7 +372,7 @@ await db.checkpoint('PASSIVE');
 await db.backup('/sdcard/backup.db');
 ```
 
-📊 Contoh Aplikasi Lengkap
+## 📊 Contoh Aplikasi Lengkap
 
 Aplikasi To-Do List
 
@@ -529,7 +529,7 @@ async function loggingExample() {
 loggingExample();
 ```
 
-⚡ Performance Tips
+## ⚡ Performance Tips
 
 1. Gunakan Prepared Statement untuk Query Berulang
 
@@ -577,7 +577,7 @@ for await (const row of stmt.iterate({ chunk: 5000 })) { }
 for await (const row of stmt.iterate({ chunk: 'auto' })) { }
 ```
 
-🐛 Troubleshooting
+## 🐛 Troubleshooting
 
 Masalah Umum dan Solusi
 
@@ -633,25 +633,38 @@ await db.pragma('cache_size = 2000');
 await db.pragma('temp_store = MEMORY');
 ```
 
-📊 Perbandingan dengan Library Lain
+## 📊 Perbandingan dengan Library Lain
 
-Fitur termux-sqlite3 better-sqlite3 sqlite3 (npm)
-Kompatibilitas Termux ✅ Tanpa kompilasi ❌ Butuh kompilasi native ❌ Butuh kompilasi native
-API Style Async/Promise Sync Callback/Promise
-Memory Management ✅ Adaptive chunking ✅ Native ⚠️ Manual
-Transaction Support ✅ Full dengan savepoints ✅ Full ✅ Basic
-Zero Native Build ✅ 100% JS ❌ Native addon ❌ Native addon
-Performance ⚡ Baik (JSON streaming) ⚡ Sangat Baik ⚡ Baik
+| Fitur | termux-sqlite3 | better-sqlite3 | sqlite3 (npm) |
+| :--- | :--- | :--- | :--- |
+| **Kompatibilitas Termux** | ✅ Tanpa kompilasi | ❌ Butuh kompilasi native | ❌ Butuh kompilasi native |
+| **API Style** | Async/Promise | Sync | Callback/Promise |
+| **Memory Management** | ✅ Adaptive chunking | ✅ Native | ⚠️ Manual |
+| **Transaction Support** | ✅ Full + Savepoints | ✅ Full | ✅ Basic |
+| **Zero Native Build** | ✅ 100% JS | ❌ Native addon | ❌ Native addon |
+| **Performance** | ⚡ Baik (JSON Stream) | ⚡ Sangat Baik | ⚡ Baik |
 
-🤝 Berkontribusi
+---
+
+## 🤝 Berkontribusi
 
 Kontribusi sangat diterima! Berikut cara berkontribusi:
 
-1. Fork repository
-2. Buat branch fitur (git checkout -b fitur/amazing-feature)
-3. Commit perubahan (git commit -m 'Add amazing feature')
-4. Push ke branch (git push origin fitur/amazing-feature)
-5. Buat Pull Request
+1. **Fork** repository ini.
+2. **Buat branch fitur** baru:
+   ```bash
+   git checkout -b fitur/amazing-feature
+
+ * Commit perubahan Anda:
+   git commit -m 'Add amazing feature'
+
+ * Push ke branch tersebut:
+   git push origin fitur/amazing-feature
+
+ * Buat Pull Request melalui GitHub.
+<!-- end list -->
+
+---
 
 Development Setup
 
