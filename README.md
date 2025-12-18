@@ -11,26 +11,26 @@ termux-sqlite3 adalah wrapper SQLite berbasis JavaScript murni (JS-only) yang di
 
 Library ini bekerja dengan melakukan spawning terhadap proses sqlite3 sistem dan berkomunikasi melalui antarmuka JSON yang efisien.
 
-## âœ¨ Fitur Utama
+## ✨ Fitur Utama
 
-* **ðŸš« Zero Native Dependencies:** Tidak memerlukan `node-gyp`, Python, atau kompilasi C++; hanya membutuhkan binary `sqlite3` terinstal di Termux.
-* **ðŸ“š API Mirip Better-sqlite3:** Menggunakan pola `prepare()`, `get()`, dan `all()` yang familiar.
-* **ðŸ’¾ Manajemen Memori Pintar:** Dilengkapi dengan sistem cursor yang menyesuaikan ukuran pengambilan data (*chunk size*) secara dinamis berdasarkan penggunaan RAM.
-* **ðŸ”’ Transaksi Terintegrasi:** Dukungan bawaan untuk transaksi atomik dengan *automatic rollback* jika terjadi kesalahan.
-* **ðŸ›¡ï¸ SQL Binding Aman:** Mencegah SQL Injection dengan sistem binding parameter menggunakan sintaks `:key` atau `?`.
-* **ðŸ” Query Plan Analysis:** Memudahkan optimasi query dengan fitur `explain()`.
-* **âš¡ Performa Optimal:** Menggunakan JSON streaming untuk komunikasi yang efisien dengan proses SQLite.
-* **ðŸ”„ Connection Pooling:** Mendukung multiple connections untuk *concurrent queries*.
+* **🚫 Zero Native Dependencies:** Tidak memerlukan `node-gyp`, Python, atau kompilasi C++; hanya membutuhkan binary `sqlite3` terinstal di Termux.
+* **📚 API Mirip Better-sqlite3:** Menggunakan pola `prepare()`, `get()`, dan `all()` yang familiar.
+* **💾 Manajemen Memori Pintar:** Dilengkapi dengan sistem cursor yang menyesuaikan ukuran pengambilan data (*chunk size*) secara dinamis berdasarkan penggunaan RAM.
+* **🔒 Transaksi Terintegrasi:** Dukungan bawaan untuk transaksi atomik dengan *automatic rollback* jika terjadi kesalahan.
+* **🛡️ SQL Binding Aman:** Mencegah SQL Injection dengan sistem binding parameter menggunakan sintaks `:key` atau `?`.
+* **🔍 Query Plan Analysis:** Memudahkan optimasi query dengan fitur `explain()`.
+* **⚡ Performa Optimal:** Menggunakan JSON streaming untuk komunikasi yang efisien dengan proses SQLite.
+* **🔄 Connection Pooling:** Mendukung multiple connections untuk *concurrent queries*.
 
 
-## ðŸ“‹ Prasyarat
+## 📋 Prasyarat
 
 * **Termux** (Disarankan versi [F-Droid](https://f-droid.org/en/packages/com.termux/) untuk update terbaru)
 * **Node.js** (Versi 14 atau yang lebih baru)
 * **SQLite3 Binary** (Terinstal di sistem Termux)
 
 
-## ðŸš€ Instalasi
+## 🚀 Instalasi
 
 1. Instal Dependensi di Termux
 
@@ -56,7 +56,7 @@ npm install https://github.com/renpwn/termux-sqlite3
 npm install termux-sqlite3
 ```
 
-## ðŸ“– Quick Start
+## 📖 Quick Start
 
 Inisialisasi Database
 
@@ -125,7 +125,7 @@ await db.run(
 );
 ```
 
-## ðŸ› ï¸ API Reference Lengkap
+## 🛠️ API Reference Lengkap
 
 ### Kelas Database
 
@@ -260,7 +260,7 @@ const plan = await stmt.explain();
 console.log('Query Plan:', plan);
 ```
 
-## ðŸ”„ Iterasi Data Besar dengan Cursor
+## 🔄 Iterasi Data Besar dengan Cursor
 
 Untuk dataset yang besar, gunakan cursor untuk menghindari kehabisan memori:
 
@@ -291,7 +291,7 @@ for await (const row of stmt.iterate(options)) {
 }
 ```
 
-## ðŸ’° Manajemen Transaksi
+## 💰 Manajemen Transaksi
 
 Transaksi Sederhana
 
@@ -342,7 +342,7 @@ await db.transaction.batch(db, operations, {
 });
 ```
 
-ðŸ” Debugging dan Optimasi
+🔍 Debugging dan Optimasi
 
 Aktifkan Debug Mode
 
@@ -372,7 +372,7 @@ await db.checkpoint('PASSIVE');
 await db.backup('/sdcard/backup.db');
 ```
 
-## ðŸ“Š Contoh Aplikasi Lengkap
+## 📊 Contoh Aplikasi Lengkap
 
 Aplikasi To-Do List
 
@@ -529,18 +529,18 @@ async function loggingExample() {
 loggingExample();
 ```
 
-## âš¡ Performance Tips
+## ⚡ Performance Tips
 
 1. Gunakan Prepared Statement untuk Query Berulang
 
 ```javascript
-// âœ… BENAR: Gunakan prepared statement
+// ✅ BENAR: Gunakan prepared statement
 const stmt = db.prepare('INSERT INTO data (value) VALUES (?)');
 for (const value of largeArray) {
   await stmt.run([value]);
 }
 
-// âŒ SALAH: Hindari re-prepare setiap iterasi
+// ❌ SALAH: Hindari re-prepare setiap iterasi
 for (const value of largeArray) {
   await db.run('INSERT INTO data (value) VALUES (?)', [value]);
 }
@@ -549,7 +549,7 @@ for (const value of largeArray) {
 2. Gunakan Transaction untuk Batch Operations
 
 ```javascript
-// âœ… BENAR: Gunakan transaction untuk bulk insert
+// ✅ BENAR: Gunakan transaction untuk bulk insert
 await db.transaction(async () => {
   for (const item of items) {
     await db.run('INSERT INTO products (name, price) VALUES (?, ?)', 
@@ -557,7 +557,7 @@ await db.transaction(async () => {
   }
 });
 
-// âŒ SALAH: Hindari autocommit setiap insert
+// ❌ SALAH: Hindari autocommit setiap insert
 for (const item of items) {
   await db.run('INSERT INTO products (name, price) VALUES (?, ?)', 
     [item.name, item.price]);
@@ -577,7 +577,7 @@ for await (const row of stmt.iterate({ chunk: 5000 })) { }
 for await (const row of stmt.iterate({ chunk: 'auto' })) { }
 ```
 
-## ðŸ› Troubleshooting
+## 🐛 Troubleshooting
 
 Masalah Umum dan Solusi
 
@@ -633,20 +633,20 @@ await db.pragma('cache_size = 2000');
 await db.pragma('temp_store = MEMORY');
 ```
 
-## ðŸ“Š Perbandingan dengan Library Lain
+## 📊 Perbandingan dengan Library Lain
 
 | Fitur | termux-sqlite3 | better-sqlite3 | sqlite3 (npm) |
 | :--- | :--- | :--- | :--- |
-| **Kompatibilitas Termux** | âœ… Tanpa kompilasi | âŒ Butuh kompilasi native | âŒ Butuh kompilasi native |
+| **Kompatibilitas Termux** | ✅ Tanpa kompilasi | ❌ Butuh kompilasi native | ❌ Butuh kompilasi native |
 | **API Style** | Async/Promise | Sync | Callback/Promise |
-| **Memory Management** | âœ… Adaptive chunking | âœ… Native | âš ï¸ Manual |
-| **Transaction Support** | âœ… Full + Savepoints | âœ… Full | âœ… Basic |
-| **Zero Native Build** | âœ… 100% JS | âŒ Native addon | âŒ Native addon |
-| **Performance** | âš¡ Baik (JSON Stream) | âš¡ Sangat Baik | âš¡ Baik |
+| **Memory Management** | ✅ Adaptive chunking | ✅ Native | ⚠️ Manual |
+| **Transaction Support** | ✅ Full + Savepoints | ✅ Full | ✅ Basic |
+| **Zero Native Build** | ✅ 100% JS | ❌ Native addon | ❌ Native addon |
+| **Performance** | ⚡ Baik (JSON Stream) | ⚡ Sangat Baik | ⚡ Baik |
 
 ---
 
-## ðŸ¤ Berkontribusi
+## 🤝 Berkontribusi
 
 Kontribusi sangat diterima! Berikut cara berkontribusi:
 
@@ -688,17 +688,17 @@ npm run lint
 
 ---
 
-ðŸ“„ Lisensi
+📄 Lisensi
 
 Proyek ini dilisensikan di bawah MIT License - lihat file LICENSE untuk detail.
 
-## ðŸ™ Acknowledgements
+## 🙏 Acknowledgements
 
 * **SQLite** - Database engine yang luar biasa.
 * **Termux** - Terminal emulator untuk Android.
 * **better-sqlite3** - Inspirasi utama untuk desain API.
 
-ðŸ“ž Support
+📞 Support
 
 Jika Anda menemukan bug atau memiliki pertanyaan:
 
@@ -708,6 +708,6 @@ Jika Anda menemukan bug atau memiliki pertanyaan:
 
 ---
 
-Dibuat dengan â¤ï¸ untuk komunitas Termux
+Dibuat dengan ❤️ untuk komunitas Termux
 
 "Membawa pengembangan database SQLite ke perangkat mobile tanpa batas kompilasi native"
