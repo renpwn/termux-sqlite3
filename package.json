@@ -1,6 +1,6 @@
 {
-  "name": "termux-sqlite3",
-  "version": "1.0.0",
+  "name": "@renpwn/termux-sqlite3",
+  "version": "1.0.1",
   "description": "SQLite JS-only engine for Termux Android (better-sqlite3-like)",
   "main": "index.js",
   "exports": {
