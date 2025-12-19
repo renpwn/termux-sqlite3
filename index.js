@@ -9,12 +9,33 @@ class Database {
     this.engine = new Engine(filename, options)
     this.statements = new Map() // Cache for prepared statements
     
+    // 🔥 INTERNAL INIT (PRAGMA DI LIBRARY)
+    this._initPromise = this._initPragmas()
+  
     // Event forwarding
     this.engine.on('error', (err) => {
       if (this.listeners('error').length > 0) {
         this.emit('error', err)
       }
     })
+  }
+  
+  async _initPragmas() {
+    // Pastikan hanya sekali
+    if (this._pragmasInitialized) return
+    this._pragmasInitialized = true
+  
+    // ⚠️ JANGAN exec di engine init
+    await this.engine.pragma("journal_mode = WAL")
+    await this.engine.pragma("synchronous = NORMAL")
+    await this.engine.pragma("foreign_keys = ON")
+  }
+  
+  async _ready() {
+    if (this._initPromise) {
+      await this._initPromise
+      this._initPromise = null
+    }
   }
 
   // Inherit EventEmitter
@@ -31,11 +52,12 @@ class Database {
   emit(event, ...args) {
     return this.engine.emit(event, ...args)
   }
-
+  
   async exec(sql) {
+    await this._ready()
     return this.engine.exec(sql)
   }
-
+  
   prepare(sql) {
     // Cache prepared statements
     const cacheKey = sql.trim()
@@ -49,22 +71,30 @@ class Database {
   }
 
   transaction(fn, options) {
-    return transaction(this.engine, fn, options)
+    //return transaction(this.engine, fn, options)
+    return async(...args) => {
+      await this._ready()
+      const trx = transaction(this.engine, fn, options)
+      return trx(...args)
+    }
   }
 
   async pragma(name, value) {
+    await this._ready()
     const sql = value !== undefined ? `PRAGMA ${name} = ${value}` : `PRAGMA ${name}`
     const result = await this.engine.query(sql)
     return result.length === 1 ? result[0] : result
   }
 
   async backup(targetFilename) {
+    await this._ready()
     // Simple backup using .dump command
     await this.engine.exec(`.backup ${targetFilename}`)
     return true
   }
 
   async vacuum() {
+    await this._ready()
     return this.engine.vacuum()
   }
 
@@ -81,16 +111,19 @@ class Database {
 
   // Helper methods
   async get(sql, params) {
+    await this._ready()
     const stmt = this.prepare(sql)
     return stmt.get(params)
   }
 
   async all(sql, params) {
+    await this._ready()
     const stmt = this.prepare(sql)
     return stmt.all(params)
   }
 
   async run(sql, params) {
+    await this._ready()
     const stmt = this.prepare(sql)
     return stmt.run(params)
   }

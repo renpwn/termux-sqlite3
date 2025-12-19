@@ -93,9 +93,6 @@ class Engine extends EventEmitter {
       proc.stdin.write(`.timeout ${this.options.busyTimeout}\n`)
       proc.stdin.write(".mode json\n")
       proc.stdin.write(".headers off\n")
-      proc.stdin.write("PRAGMA journal_mode = WAL;\n")
-      proc.stdin.write("PRAGMA synchronous = NORMAL;\n")
-      proc.stdin.write("PRAGMA foreign_keys = ON;\n")
   
       // ⬅️ SENTINEL PALING PENTING
       proc.stdin.write(".print __READY__\n")
