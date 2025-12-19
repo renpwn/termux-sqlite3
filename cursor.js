@@ -1,4 +1,5 @@
 const { detectChunkSize, estimateOptimalChunkSize } = require("./lib/memory")
+const { bind } = require('./lib/binder')
 
 class Cursor {
   constructor(stmt, options = {}) {
@@ -84,6 +85,12 @@ class Cursor {
       
       if (rows.length === 0) {
         this.done = true
+      
+        // 🔥 FIX: lepaskan consumer yang menunggu
+        if (this.consumerWaiting) {
+          this.consumerWaiting.resolve()
+          this.consumerWaiting = null
+        }
       } else {
         // Update last key for next fetch
         const lastRow = rows[rows.length - 1]
@@ -162,22 +169,27 @@ class Cursor {
         })
       }
     }
+    if (this.done && this.buffer.length === 0) {
+      return
+    }
   }
 
   async *iterate() {
-    while (!this.done || this.buffer.length > 0) {
-      // Ensure we have data in buffer
+    while (true) {
       await this._ensureBuffer()
-      
-      // Yield available rows
+  
+      // ✅ FIX 3: EXIT CONDITION JELAS
+      if (this.done && this.buffer.length === 0) {
+        return
+      }
+  
       while (this.buffer.length > 0) {
         const row = this.buffer.shift()
-        
-        // Apply backpressure if buffer gets too high
+  
         if (this.buffer.length >= this.highWaterMark && !this.isFetching) {
           this._fetchChunk().catch(console.error)
         }
-        
+  
         yield row
       }
     }
