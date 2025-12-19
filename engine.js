@@ -35,108 +35,119 @@ class Engine extends EventEmitter {
         stdio: ["pipe", "pipe", "pipe"],
         env: { ...process.env, SQLITE_TMPDIR: "/data/data/com.termux/files/usr/tmp" }
       })
-
+      
       const processObj = {
         proc,
-        isBusy: false,
+        isBusy: true,
         buffer: "",
+        responseBuffer: "",   // ⬅️ TAMBAH INI
         resolve: null,
         reject: null,
         currentQuery: null,
         lastUsed: Date.now()
       }
-
+  
+      // === INIT TIMEOUT (DITANYAKAN KAMU) ===
+      const initTimeout = setTimeout(() => {
+        this._restartProcess(processObj)
+        reject(new Error("Process initialization timeout"))
+      }, 5000)
+  
+      // resolve akan dipanggil saat __READY__ diterima
+      processObj.resolve = () => {
+        clearTimeout(initTimeout)
+        processObj.isBusy = false
+        processObj.resolve = null
+        processObj.reject = null
+        processObj.lastUsed = Date.now()
+  
+        this.processPool.push(processObj)
+        resolve(processObj)
+      }
+  
       proc.stdout.on("data", (chunk) => {
         processObj.buffer += chunk.toString()
         this._processBuffer(processObj)
       })
-
+  
       proc.stderr.on("data", (data) => {
         const error = data.toString().trim()
         if (error && !error.includes("Warning:")) {
           this.emit("error", new Error(`SQLite: ${error}`))
-          if (processObj.reject) {
-            processObj.reject(new Error(error))
-          }
         }
       })
-
+  
       proc.on("error", (err) => {
+        clearTimeout(initTimeout)
         this.emit("error", err)
-        if (processObj.reject) {
-          processObj.reject(err)
-        }
-        this._restartProcess(processObj)
+        reject(err)
       })
-
+  
       proc.on("exit", (code) => {
         if (code !== 0 && !this.isClosing) {
           this.emit("error", new Error(`Process exited with code ${code}`))
-          this._restartProcess(processObj)
         }
       })
-
-      // Initialize SQLite settings
+  
+      // === KIRIM INIT COMMAND ===
       proc.stdin.write(`.timeout ${this.options.busyTimeout}\n`)
       proc.stdin.write(".mode json\n")
       proc.stdin.write(".headers off\n")
       proc.stdin.write("PRAGMA journal_mode = WAL;\n")
       proc.stdin.write("PRAGMA synchronous = NORMAL;\n")
       proc.stdin.write("PRAGMA foreign_keys = ON;\n")
-
-      processObj.proc.stdin.write("SELECT 1 as initialized;\n")
-      
-      const checkInitialized = (data) => {
-        if (data.toString().includes('initialized')) {
-          proc.stdout.removeListener('data', checkInitialized)
-          this.processPool.push(processObj)
-          resolve(processObj)
-        }
-      }
-      
-      proc.stdout.once('data', checkInitialized)
-      
-      // Timeout for initialization
-      setTimeout(() => {
-        if (!processObj.resolve) {
-          this._restartProcess(processObj)
-          reject(new Error("Process initialization timeout"))
-        }
-      }, 5000)
+  
+      // ⬅️ SENTINEL PALING PENTING
+      proc.stdin.write(".print __READY__\n")
     })
   }
 
   _processBuffer(processObj) {
     const lines = processObj.buffer.split('\n')
-    
+  
     for (let i = 0; i < lines.length - 1; i++) {
-      const line = lines[i].trim()
-      if (!line) continue
-      
-      if (processObj.resolve) {
-        try {
-          const result = line === "[]" ? [] : JSON.parse(line)
-          processObj.resolve(Array.isArray(result) ? result : [result])
-          
-          // Reset process state
+      const line = lines[i]
+  
+      // READY sentinel (init)
+      if (line.trim() === "__READY__") {
+        if (processObj.resolve) {
+          processObj.resolve()
+        }
+        continue
+      }
+  
+      // END sentinel (query selesai)
+      if (line.trim() === "__END__") {
+        const raw = processObj.responseBuffer.trim()
+        processObj.responseBuffer = ""
+  
+        if (processObj.resolve) {
+          try {
+            const result = raw
+              ? JSON.parse(raw)
+              : []
+  
+            processObj.resolve(Array.isArray(result) ? result : [result])
+          } catch (err) {
+            processObj.reject?.(
+              new Error(`JSON Parse Error: ${err.message}, Data: ${raw}`)
+            )
+          }
+  
           processObj.resolve = null
           processObj.reject = null
           processObj.currentQuery = null
           processObj.isBusy = false
-          processObj.buffer = ""
           processObj.lastUsed = Date.now()
-          
-          // Process next query in queue
-          this._processQueue()
-        } catch (err) {
-          if (processObj.reject) {
-            processObj.reject(new Error(`JSON Parse Error: ${err.message}, Data: ${line}`))
-          }
         }
+        continue
       }
+  
+      // Kumpulkan output query
+      processObj.responseBuffer += line + "\n"
     }
-    
-    // Keep last incomplete line
+  
+    // simpan sisa buffer
     processObj.buffer = lines[lines.length - 1]
   }
 
@@ -180,7 +191,7 @@ class Engine extends EventEmitter {
         }
 
         trace(sql)
-        process.proc.stdin.write(sql + ";\n")
+        process.proc.stdin.write(sql + ";\n.print __END__\n")
       })
     } catch (error) {
       if (retries < this.options.maxRetries) {
