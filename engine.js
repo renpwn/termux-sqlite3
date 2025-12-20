@@ -40,9 +40,10 @@ class Engine extends EventEmitter {
         proc,
         isBusy: true,
         buffer: "",
-        responseBuffer: "",   // ⬅️ TAMBAH INI
-        resolve: null,
-        reject: null,
+        responseBuffer: "",
+        initResolve: null,
+        queryResolve: null,
+        queryReject: null,
         currentQuery: null,
         lastUsed: Date.now()
       }
@@ -54,15 +55,19 @@ class Engine extends EventEmitter {
       }, 5000)
   
       // resolve akan dipanggil saat __READY__ diterima
-      processObj.resolve = () => {
+      processObj.initResolve = () => {
         clearTimeout(initTimeout)
         processObj.isBusy = false
-        processObj.resolve = null
-        processObj.reject = null
-        processObj.lastUsed = Date.now()
-  
+        processObj.initResolve = null
         this.processPool.push(processObj)
         resolve(processObj)
+      }
+      
+      processObj.queryResolve = (data) => {
+        clearTimeout(timeoutId)
+        processObj.isBusy = false
+        processObj.lastUsed = Date.now()
+        resolve(data)
       }
   
       proc.stdout.on("data", (chunk) => {
@@ -105,42 +110,39 @@ class Engine extends EventEmitter {
     for (let i = 0; i < lines.length - 1; i++) {
       const line = lines[i]
   
-      // READY sentinel (init)
+      // === READY sentinel (INIT) ===
       if (line.trim() === "__READY__") {
-        if (processObj.resolve) {
-          processObj.resolve()
-        }
+        processObj.initResolve?.()
         continue
       }
   
-      // END sentinel (query selesai)
+      // === END sentinel (QUERY SELESAI) ===
       if (line.trim() === "__END__") {
         const raw = processObj.responseBuffer.trim()
         processObj.responseBuffer = ""
   
-        if (processObj.resolve) {
-          try {
-            const result = raw
-              ? JSON.parse(raw)
-              : []
-  
-            processObj.resolve(Array.isArray(result) ? result : [result])
-          } catch (err) {
-            processObj.reject?.(
-              new Error(`JSON Parse Error: ${err.message}, Data: ${raw}`)
-            )
-          }
-  
-          processObj.resolve = null
-          processObj.reject = null
-          processObj.currentQuery = null
-          processObj.isBusy = false
-          processObj.lastUsed = Date.now()
+        try {
+          const result = raw ? JSON.parse(raw) : []
+          processObj.queryResolve?.(
+            Array.isArray(result) ? result : [result]
+          )
+        } catch (err) {
+          processObj.queryReject?.(
+            new Error(`JSON Parse Error: ${err.message}, Data: ${raw}`)
+          )
         }
+  
+        // 🔥 RESET STATE (WAJIB)
+        processObj.queryResolve = null
+        processObj.queryReject = null
+        processObj.currentQuery = null
+        processObj.isBusy = false
+        processObj.lastUsed = Date.now()
+  
         continue
       }
   
-      // Kumpulkan output query
+      // === OUTPUT QUERY ===
       processObj.responseBuffer += line + "\n"
     }
   
@@ -149,50 +151,70 @@ class Engine extends EventEmitter {
   }
 
   async _getAvailableProcess() {
-    // Find idle process
-    let process = this.processPool.find(p => !p.isBusy)
-    
-    if (!process && this.processPool.length < this.options.poolSize) {
-      // Create new process if under pool limit
-      process = await this._createProcess()
+    // 1️⃣ CARI YANG IDLE
+    let proc = this.processPool.find(p => !p.isBusy)
+    if (proc) return proc
+  
+    // 2️⃣ CARI STALE / ZOMBIE (> 5 detik)
+    const now = Date.now()
+    const stale = this.processPool.find(
+      p => p.isBusy && (now - p.lastUsed > this.options.timeout)
+    )
+  
+    if (stale) {
+      this._restartProcess(stale)
+      // beri waktu process baru init
+      await new Promise(r => setTimeout(r, 50))
+      return this.processPool.find(p => !p.isBusy)
     }
-    
-    return process
+  
+    // 3️⃣ BOLEH BUAT BARU?
+    if (this.processPool.length < this.options.poolSize) {
+      return await this._createProcess()
+    }
+  
+    // 4️⃣ TUNGGU SEBENTAR & COBA LAGI
+    await new Promise(r => setTimeout(r, 50))
+    return this.processPool.find(p => !p.isBusy)
   }
 
   async _executeWithRetry(sql, retries = 0) {
     try {
-      const process = await this._getAvailableProcess()
-      if (!process) {
+      const processObj = await this._getAvailableProcess()
+      if (!processObj) {
         throw new Error("No available SQLite process")
       }
-
+  
       return new Promise((resolve, reject) => {
-        // Set timeout for query
         const timeoutId = setTimeout(() => {
-          if (process.reject) {
-            process.reject(new Error(`Query timeout after ${this.options.timeout}ms`))
-          }
-          this._restartProcess(process)
+          processObj.queryReject?.(
+            new Error(`Query timeout after ${this.options.timeout}ms`)
+          )
+          this._restartProcess(processObj)
         }, this.options.timeout)
-
-        process.isBusy = true
-        process.currentQuery = sql
-        process.resolve = (data) => {
+  
+        processObj.isBusy = true
+        processObj.currentQuery = sql
+  
+        processObj.queryResolve = (data) => {
           clearTimeout(timeoutId)
           resolve(data)
         }
-        process.reject = (err) => {
+  
+        processObj.queryReject = (err) => {
           clearTimeout(timeoutId)
           reject(err)
         }
-
+  
         trace(sql)
-        process.proc.stdin.write(sql + ";\n.print __END__\n")
+        processObj.proc.stdin.write(
+          sql + ";\n.print __END__\n"
+        )
       })
+  
     } catch (error) {
       if (retries < this.options.maxRetries) {
-        await new Promise(resolve => setTimeout(resolve, 100 * (retries + 1)))
+        await new Promise(r => setTimeout(r, 100 * (retries + 1)))
         return this._executeWithRetry(sql, retries + 1)
       }
       throw error
@@ -244,20 +266,18 @@ class Engine extends EventEmitter {
 
   async close() {
     this.isClosing = true
-    
-    // Wait for active queries
-    while (this.processPool.some(p => p.isBusy)) {
-      await new Promise(resolve => setTimeout(resolve, 100))
+  
+    for (const p of this.processPool) {
+      p.isBusy = false
     }
-    
-    // Close all processes
+  
     for (const process of this.processPool) {
       if (process.proc && !process.proc.killed) {
         process.proc.stdin.end(".exit\n")
         process.proc.kill()
       }
     }
-    
+  
     this.processPool = []
     this.emit("closed")
   }
