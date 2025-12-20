@@ -242,6 +242,55 @@ class Engine extends EventEmitter {
     return this.exec("VACUUM")
   }
 
+  
+  async clearAllTables() {
+    if (this.isClosing) {
+      throw new Error("Database is closing")
+    }
+
+    // Ambil semua tabel user
+    const tables = await this.query(`
+      SELECT name
+      FROM sqlite_master
+      WHERE type='table'
+        AND name NOT LIKE 'sqlite_%'
+    `)
+
+    if (!tables.length) return
+
+    // Bungkus transaction (WAJIB)
+    let sql = "BEGIN;\n"
+
+    for (const { name } of tables) {
+      sql += `DELETE FROM "${name}";\n`
+    }
+
+    // Reset AUTOINCREMENT (opsional tapi recommended)
+    sql += "DELETE FROM sqlite_sequence;\n"
+    sql += "COMMIT;"
+
+    await this.exec(sql)
+  }
+
+  async clearTable(tableName) {
+    if (this.isClosing) {
+      throw new Error("Database is closing")
+    }
+
+    if (!tableName) {
+      throw new Error("Table name is required")
+    }
+
+    const sql = `
+      BEGIN;
+      DELETE FROM "${tableName}";
+      DELETE FROM sqlite_sequence WHERE name='${tableName}';
+      COMMIT;
+    `
+
+    await this.exec(sql)
+  }
+
   async pragma(command) {
     const result = await this.query(`PRAGMA ${command}`)
     return result[0] || null
