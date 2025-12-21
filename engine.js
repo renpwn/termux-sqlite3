@@ -76,9 +76,22 @@ class Engine extends EventEmitter {
       })
   
       proc.stderr.on("data", (data) => {
-        const error = data.toString().trim()
-        if (error && !error.includes("Warning:")) {
-          this.emit("error", new Error(`SQLite: ${error}`))
+        const msg = data.toString().trim()
+        if (!msg || msg.includes("Warning:")) return
+
+        const sql = processObj.currentQuery || "<unknown>"
+
+        const error = new Error(`SQLite Error: ${msg}`)
+        error.sql = sql
+        error.sqlite = msg
+
+        // console.log(error);
+
+        // ❗ REJECT QUERY AKTIF
+        if (processObj.queryReject) {
+          processObj.queryReject(error)
+        } else {
+          this.emit("error", error)
         }
       })
   
@@ -181,6 +194,10 @@ class Engine extends EventEmitter {
   async _executeWithRetry(sql, retries = 0) {
     try {
       const processObj = await this._getAvailableProcess()
+
+      //clean sql
+      sql = sql.replace(/;+\s*$/, "")
+
       if (!processObj) {
         throw new Error("No available SQLite process")
       }
@@ -207,9 +224,11 @@ class Engine extends EventEmitter {
         }
   
         trace(sql)
+        // console.log(sql)
         processObj.proc.stdin.write(
           sql + ";\n.print __END__\n"
         )
+
       })
   
     } catch (error) {
@@ -233,9 +252,26 @@ class Engine extends EventEmitter {
     if (this.isClosing) {
       throw new Error("Database is closing")
     }
-    
-    await this._executeWithRetry(sql)
-    return { changes: 0 } // SQLite CLI doesn't return changes count
+
+    const trimmed = sql.trim()
+
+    // Deteksi multi-statement
+    const isMulti =
+      trimmed.includes(";") &&
+      trimmed.split(";").filter(s => s.trim()).length > 1
+
+    let finalSQL = trimmed
+
+    if (isMulti) {
+      finalSQL = `
+        BEGIN IMMEDIATE;
+        ${trimmed.replace(/;+\s*$/, "")};
+        COMMIT;
+      `
+    }
+
+    await this._executeWithRetry(finalSQL)
+    return { changes: 0 }
   }
 
   async vacuum() {
