@@ -277,54 +277,168 @@ class Engine extends EventEmitter {
   async vacuum() {
     return this.exec("VACUUM")
   }
-
   
-  async clearAllTables() {
+  //ADD ON
+  async clearTable(tableName, options = {}) {
     if (this.isClosing) {
       throw new Error("Database is closing")
     }
-
-    // Ambil semua tabel user
-    const tables = await this.query(`
-      SELECT name
-      FROM sqlite_master
-      WHERE type='table'
-        AND name NOT LIKE 'sqlite_%'
-    `)
-
-    if (!tables.length) return
-
-    // Bungkus transaction (WAJIB)
-    let sql = "BEGIN;\n"
-
-    for (const { name } of tables) {
-      sql += `DELETE FROM "${name}";\n`
+    
+    // Validasi nama tabel
+    if (!tableName || typeof tableName !== 'string') {
+      throw new Error("Table name must be a string")
     }
-
-    // Reset AUTOINCREMENT (opsional tapi recommended)
-    sql += "DELETE FROM sqlite_sequence;\n"
-    sql += "COMMIT;"
-
-    await this.exec(sql)
+    
+    // Validasi format nama tabel (mencegah SQL injection)
+    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(tableName)) {
+      throw new Error(`Invalid table name: ${tableName}`)
+    }
+    
+    const { 
+      disableForeignKeys = false,
+      resetAutoincrement = false,
+      vacuumAfter = false 
+    } = options
+    
+    try {
+      // Disable foreign keys jika diminta
+      if (disableForeignKeys) {
+        await this.exec('PRAGMA foreign_keys = OFF')
+      }
+      
+      // Hapus data tabel
+      await this.exec(`DELETE FROM ${tableName}`)
+      
+      // Reset autoincrement jika diminta
+      if (resetAutoincrement) {
+        await this.exec(`DELETE FROM sqlite_sequence WHERE name = '${tableName}'`)
+      }
+      
+      // VACUUM jika diminta
+      if (vacuumAfter) {
+        await this.vacuum()
+      }
+      
+      // Dapatkan jumlah baris yang dihapus
+      const result = await this.query(`SELECT changes() as deletedCount`)
+      return {
+        table: tableName,
+        deletedCount: result[0]?.deletedCount || 0,
+        resetAutoincrement: resetAutoincrement,
+        vacuumPerformed: vacuumAfter
+      }
+      
+    } catch (error) {
+      throw new Error(`Failed to clear table ${tableName}: ${error.message}`)
+    } finally {
+      // Pastikan foreign keys diaktifkan kembali
+      if (disableForeignKeys) {
+        await this.exec('PRAGMA foreign_keys = ON')
+      }
+    }
   }
 
-  async clearTable(tableName) {
+  async clearAllTables(options = {}) {
     if (this.isClosing) {
       throw new Error("Database is closing")
     }
-
-    if (!tableName) {
-      throw new Error("Table name is required")
+    
+    const { 
+      skipSystemTables = true,
+      disableForeignKeys = true,
+      resetAutoincrement = true,
+      vacuumAfter = true 
+    } = options
+    
+    try {
+      // Disable foreign keys untuk menghindari constraint errors
+      if (disableForeignKeys) {
+        await this.exec('PRAGMA foreign_keys = OFF')
+      }
+      
+      // Dapatkan daftar semua tabel user
+      let query = "SELECT name FROM sqlite_master WHERE type='table'"
+      if (skipSystemTables) {
+        query += " AND name NOT LIKE 'sqlite_%' AND name NOT IN ('android_metadata', 'room_master_table')"
+      }
+      
+      const tables = await this.query(query)
+      
+      if (tables.length === 0) {
+        return {
+          clearedTables: [],
+          totalDeleted: 0,
+          message: "No user tables found"
+        }
+      }
+      
+      const results = []
+      let totalDeleted = 0
+      
+      // Hapus data dari setiap tabel
+      for (const table of tables) {
+        try {
+          await this.exec(`DELETE FROM ${table.name}`)
+          
+          // Reset autoincrement jika diminta
+          if (resetAutoincrement) {
+            try {
+              await this.exec(`DELETE FROM sqlite_sequence WHERE name = '${table.name}'`)
+            } catch (e) {
+              // Ignore jika tabel tidak ada di sqlite_sequence
+            }
+          }
+          
+          // Dapatkan jumlah yang dihapus
+          const changes = await this.query(`SELECT changes() as count`)
+          const deletedCount = changes[0]?.count || 0
+          
+          results.push({
+            table: table.name,
+            deletedCount: deletedCount,
+            autoincrementReset: resetAutoincrement
+          })
+          
+          totalDeleted += deletedCount
+          
+        } catch (tableError) {
+          results.push({
+            table: table.name,
+            error: tableError.message,
+            deletedCount: 0
+          })
+        }
+      }
+      
+      // VACUUM untuk merapikan database
+      if (vacuumAfter && totalDeleted > 0) {
+        await this.vacuum()
+      }
+      
+      // Aktifkan kembali foreign keys
+      if (disableForeignKeys) {
+        await this.exec('PRAGMA foreign_keys = ON')
+      }
+      
+      return {
+        clearedTables: results,
+        totalTables: results.length,
+        totalDeleted: totalDeleted,
+        vacuumPerformed: vacuumAfter,
+        autoincrementReset: resetAutoincrement
+      }
+      
+    } catch (error) {
+      // Pastikan foreign keys diaktifkan kembali meskipun error
+      if (disableForeignKeys) {
+        try {
+          await this.exec('PRAGMA foreign_keys = ON')
+        } catch (e) {
+          // Ignore secondary error
+        }
+      }
+      throw new Error(`Failed to clear all tables: ${error.message}`)
     }
-
-    const sql = `
-      BEGIN;
-      DELETE FROM "${tableName}";
-      DELETE FROM sqlite_sequence WHERE name='${tableName}';
-      COMMIT;
-    `
-
-    await this.exec(sql)
   }
 
   async pragma(command) {

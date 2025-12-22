@@ -80,76 +80,6 @@ class Database {
     }
   }
 
-  /*transaction(fn, options) {
-    //return transaction(this.engine, fn, options)
-    return async(...args) => {
-      await this._ready()
-      const trx = transaction(this.engine, fn, options)
-      return trx(...args)
-    }
-  }
-  
-  /*transaction(fn, options) {
-    const engine = this.engine
-    const ready = this._ready.bind(this)
-  
-    return async (...args) => {
-      await ready()
-  
-      // ⬇️ transaction() SUDAH EKSEKUSI
-      return transaction(engine, async () => {
-        return fn(...args)
-      }, options)
-    }
-  }*/
-  
-  transactionold(fn, options) {
-    if (fn.constructor.name === 'AsyncFunction') {
-      throw new Error(
-        'transaction callback MUST NOT be async'
-      )
-    }
-  
-    const engine = this.engine
-    const ready = this._ready.bind(this)
-  
-    // 🔑 BUAT TRANSACTION FUNCTION SEKALI
-    const trx = transaction(engine, fn, options)
-  
-    // 🔑 RETURN FUNCTION (API CONTRACT)
-    return async (...args) => {
-      await ready()
-      return trx(...args)
-    }
-  }
-  
-  transactionoldz(fn, options) {
-    if (fn.constructor.name === 'AsyncFunction') {
-      throw new Error(
-        'transaction callback MUST NOT be async'
-      )
-    }
-  
-    const engine = this.engine
-    const ready = this._ready.bind(this)
-  
-    // ⬇️ RETURN EXECUTOR FUNCTION
-    return async (...args) => {
-      await ready()
-  
-      // 🔑 PANGGIL transaction SETIAP EKSEKUSI
-      const trx = transaction(engine, fn, options)
-  
-      if (typeof trx !== 'function') {
-        throw new TypeError(
-          'Internal error: transaction() did not return a function'
-        )
-      }
-  
-      return trx(...args)
-    }
-  }
-
   async pragma(name, value) {
     await this._ready()
     const sql = value !== undefined ? `PRAGMA ${name} = ${value}` : `PRAGMA ${name}`
@@ -167,6 +97,72 @@ class Database {
   async vacuum() {
     await this._ready()
     return this.engine.vacuum()
+  }
+
+  // ADD ON
+  async clearTable(tableName, options = {}) {
+    await this._ready()
+    
+    // Validasi tambahan
+    if (!tableName) {
+      throw new Error("Table name is required")
+    }
+    
+    // Cek apakah tabel exists
+    try {
+      const tableInfo = await this.pragma(`table_info(${tableName})`)
+      if (!tableInfo || tableInfo.length === 0) {
+        throw new Error(`Table '${tableName}' does not exist`)
+      }
+    } catch (error) {
+      if (error.message.includes('does not exist') || error.message.includes('no such table')) {
+        throw new Error(`Table '${tableName}' does not exist`)
+      }
+    }
+    
+    return this.engine.clearTable(tableName, options)
+  }
+
+  async clearAllTables(options = {}) {
+    await this._ready()
+    
+    // Konfirmasi keamanan (optional)
+    const { skipConfirmation = false } = options
+    
+    if (!skipConfirmation && process.env.NODE_ENV !== 'test') {
+      // Di production, mungkin ingin menambahkan konfirmasi
+      console.warn('⚠️  WARNING: This will delete ALL data from ALL user tables!')
+    }
+    
+    return this.engine.clearAllTables(options)
+  }
+
+  async truncateTable(tableName, options = {}) {
+    // Alias untuk clearTable dengan reset autoincrement
+    return this.clearTable(tableName, { ...options, resetAutoincrement: true })
+  }
+
+  async resetDatabase(options = {}) {
+    // Reset lengkap: clear all + VACUUM + reset settings
+    await this._ready()
+    
+    const result = await this.clearAllTables({
+      ...options,
+      resetAutoincrement: true,
+      vacuumAfter: true,
+      disableForeignKeys: true
+    })
+    
+    // Reset pragma settings ke default
+    await this.pragma('journal_mode', 'DELETE')
+    await this.pragma('synchronous', 'FULL')
+    await this.pragma('foreign_keys', 'ON')
+    
+    return {
+      ...result,
+      pragmaReset: true,
+      message: 'Database completely reset to initial state'
+    }
   }
 
   async checkpoint(mode = 'PASSIVE') {
