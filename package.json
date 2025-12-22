@@ -60,14 +60,6 @@
     "README.md",
     "LICENSE"
   ],
-  "os": [
-    "android"
-  ],
-  "cpu": [
-    "arm",
-    "arm64",
-    "x64"
-  ],
   "optionalDependencies": {
     "sqlite3": ">=3.40.0"
   }
