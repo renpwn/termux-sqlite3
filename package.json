@@ -24,7 +24,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/renpwn/termux-sqlite3.git"
+    "url": "git+https://github.com/renpwn/termux-sqlite3.git"
   },
   "bugs": {
     "url": "https://github.com/renpwn/termux-sqlite3/issues"
@@ -60,8 +60,14 @@
     "README.md",
     "LICENSE"
   ],
-  "os": ["android"],
-  "cpu": ["arm", "arm64", "x64"],
+  "os": [
+    "android"
+  ],
+  "cpu": [
+    "arm",
+    "arm64",
+    "x64"
+  ],
   "optionalDependencies": {
     "sqlite3": ">=3.40.0"
   }
