@@ -1,6 +1,6 @@
 {
   "name": "@renpwn/termux-sqlite3",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "High-performance SQLite3 for Termux Android with better-sqlite3-like API",
   "main": "index.js",
   "exports": {
