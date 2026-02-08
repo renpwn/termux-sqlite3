@@ -5,7 +5,10 @@
   "main": "index.js",
   "types": "index.d.ts",
   "exports": {
-    ".": "./index.js",
+    ".": {
+    "types": "./index.d.ts",
+    "require": "./index.js"
+    },
     "./debug": "./lib/debug.js",
     "./memory": "./lib/memory.js",
     "./transaction": "./transaction.js"
