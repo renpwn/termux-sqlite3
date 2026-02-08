@@ -1,9 +1,15 @@
 const Engine = require("./engine")
 const Statement = require("./statement")
 const transaction = require("./transaction")
+const { ensureSplitDatabase } = require('./lib/split')
+const { splitDatabase } = require('./lib/splitter')
 
 class Database {
   constructor(filename, options = {}) {
+    if (options.split?.enabled) {
+      ensureSplitDatabase(filename, options.split)
+    }
+
     this.filename = filename
     this.options = options
     this.engine = new Engine(filename, options)
@@ -174,10 +180,24 @@ class Database {
   }
 
   async close() {
+    // pastikan WAL bersih
+    try {
+      await this.checkpoint('FULL')
+    } catch {}
+  
     // Clear statement cache
     this.statements.clear()
     // Close engine
     await this.engine.close()
+    
+    // SPLIT SETELAH SQLITE MATI
+    if (
+      this.options.split?.enabled &&
+      this.options.split?.splitOnClose
+    ) {
+      const { splitDatabase } = require('./lib/splitter')
+      splitDatabase(this.filename, this.options.split)
+    }
   }
 
   // Helper methods
