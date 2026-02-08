@@ -1,9 +1,15 @@
 # termux-sqlite3
 
-![Termux](https://img.shields.io/badge/Termux-Android-00B0F0?style=for-the-badge&logo=android)
-![Node.js](https://img.shields.io/badge/Node.js-18+-339933?style=for-the-badge&logo=nodedotjs)
-![SQLite](https://img.shields.io/badge/SQLite-3-003B57?style=for-the-badge&logo=sqlite)
-![License](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)
+  
+![Termux](https://img.shields.io/badge/Termux-Android-00B0F0?logo=android)
+![SQLite](https://img.shields.io/badge/SQLite-3-003B57?logo=sqlite)
+![Node.js](https://img.shields.io/badge/Node.js-18+-339933?logo=nodedotjs)
+![npm version](https://img.shields.io/npm/v/@renpwn/termux-sqlite3)
+![npm downloads](https://img.shields.io/npm/dm/@renpwn/termux-sqlite3)
+![license](https://img.shields.io/npm/l/@renpwn/termux-sqlite3)
+![last commit](https://img.shields.io/github/last-commit/renpwn/termux-sqlite3)
+![repo size](https://img.shields.io/github/repo-size/renpwn/termux-sqlite3)
+![types](https://img.shields.io/npm/types/@renpwn/termux-sqlite3)
 
 `termux-sqlite3` adalah wrapper SQLite berbasis JavaScript murni (JS-only) yang dirancang khusus untuk lingkungan **Termux** di Android.
 
@@ -21,7 +27,12 @@ Library ini bekerja dengan melakukan spawning terhadap proses sqlite3 sistem dan
 * **🔍 Query Plan Analysis:** Memudahkan optimasi query dengan fitur `explain()`.
 * **⚡ Performa Optimal:** Menggunakan JSON streaming untuk komunikasi yang efisien dengan proses SQLite.
 * **🔄 Connection Pooling:** Mendukung multiple connections untuk *concurrent queries*.
-
+* **⚡ Cepat & Stabil:** SQLite CLI dengan streaming JSON real-time
+* **🧠 Cursor Adaptif:** chunking otomatis hemat memori untuk tabel besar
+* **🔒 Binding SQL Aman:** parameter posisi & bernama (anti SQL injection)
+* **🔄 Dukungan Transaksi:** retry otomatis, savepoint, dan isolation level
+* **📦 Split & Rebuild Database:** publish SQLite besar ke GitHub & npm dengan aman
+* **🧩 Desain Termux-first:** berjalan langsung di Android nyata
 
 ## 📋 Prasyarat
 
@@ -258,6 +269,82 @@ Contoh:
 ```javascript
 const plan = await stmt.explain();
 console.log('Query Plan:', plan);
+```
+## 📦 Split & Rebuild Database (Dukungan SQLite Ukuran Besar)
+
+Library ini mendukung pemecahan (split) file database SQLite berukuran
+besar agar bisa dengan aman: - di-commit ke GitHub - dipublish ke npm -
+didistribusikan tanpa Git LFS
+
+### Prinsip Desain
+
+-   Split hanya saat build-time\
+-   Rebuild otomatis saat runtime\
+-   Performa SQLite tidak terpengaruh
+
+---
+
+## 🔹 Memecah Database (Build-Time)
+
+Split dilakukan setelah database final & ditutup.
+
+``` js
+const { splitDatabase } = require('@renpwn/termux-sqlite3/lib/splitter')
+
+splitDatabase('seed.db', {
+  partSizeMB: 8
+})
+```
+
+Output:
+
+    seed.db.part01
+    seed.db.part02
+    seed.db.part03
+    seed.db.manifest.json
+
+---
+
+## 🔹 File Manifest
+
+``` json
+{
+  "name": "seed.db",
+  "parts": 3,
+  "size": 28491776,
+  "checksum": {
+    "algo": "sha256",
+    "value": "..."
+  }
+}
+```
+
+---
+
+## 🔹 Rebuild Otomatis (Runtime)
+
+``` js
+const db = new Database('seed.db', {
+  split: {
+    enabled: true
+  }
+})
+```
+
+---
+
+## 🔹 Split Saat db.close() (Opsional)
+
+``` js
+const db = new Database('seed.db', {
+  split: {
+    enabled: true,
+    splitOnClose: true,
+    partSizeMB: 8
+  }
+})
+
+await db.close()
 ```
 
 ## 🔄 Iterasi Data Besar dengan Cursor
@@ -688,9 +775,11 @@ npm run lint
 
 ---
 
-📄 Lisensi
+## 📄 Lisensi
 
-Proyek ini dilisensikan di bawah MIT License - lihat file LICENSE untuk detail.
+MIT © renpwn - **Ardy Rendra R**
+
+---
 
 ## 🙏 Acknowledgements
 
@@ -711,3 +800,25 @@ Jika Anda menemukan bug atau memiliki pertanyaan:
 Dibuat dengan ❤️ untuk komunitas Termux
 
 "Membawa pengembangan database SQLite ke perangkat mobile tanpa batas kompilasi native"
+
+---
+
+## 🙌 Support the Author
+
+If this project helps you or saves you time, your support is greatly appreciated 🙏
+
+### ⭐ Star the repo
+[![GitHub Stars](https://img.shields.io/github/stars/renpwn/termux-sqlite3?style=flat&logo=github&color=gray)](https://github.com/renpwn/termux-sqlite3)
+
+### 📺 Content & Community
+[![YouTube](https://img.shields.io/badge/YouTube-Subscribe-FF0000?style=flat&logo=youtube&logoColor=white)](https://youtube.com/@renpwn)
+
+### 🛒 Marketplace & Social Commerce
+[![TikTok](https://img.shields.io/badge/TikTok-Account%20%26%20Shop-25F4EE?style=flat&logo=tiktok&logoColor=black)](https://www.tiktok.com/@renpwn)
+[![Shopee](https://img.shields.io/badge/Shopee-Store-EE4D2D?style=flat&logo=shopee&logoColor=white)](https://shopee.co.id/renpwn)
+[![Tokopedia](https://img.shields.io/badge/Tokopedia-Store-03AC0E?style=flat&logo=tokopedia&logoColor=white)](https://www.tokopedia.com/renpwn)
+
+### ☕ Personal Support
+[![PayPal](https://img.shields.io/badge/PayPal-Donate-0070BA?style=flat&logo=paypal&logoColor=white)](https://paypal.me/ArdyRendra)
+[![Saweria](https://img.shields.io/badge/Saweria-Support-FFB000?style=flat)](https://saweria.co/renpwn)
+[![Trakteer](https://img.shields.io/badge/Trakteer-Support-FF6F00?style=flat)](https://trakteer.id/renpwn)
