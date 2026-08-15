@@ -18,6 +18,7 @@ class Engine extends EventEmitter {
     this.queue = []
     this.activeQueries = 0
     this.isClosing = false
+    this._queryCounter = 0
     
     // Initialize process pool
     this._initPool()
@@ -45,10 +46,10 @@ class Engine extends EventEmitter {
         queryResolve: null,
         queryReject: null,
         currentQuery: null,
+        currentQueryId: null,
         lastUsed: Date.now()
       }
   
-      // === INIT TIMEOUT (DITANYAKAN KAMU) ===
       const initTimeout = setTimeout(() => {
         this._restartProcess(processObj)
         reject(new Error("Process initialization timeout"))
@@ -61,13 +62,6 @@ class Engine extends EventEmitter {
         processObj.initResolve = null
         this.processPool.push(processObj)
         resolve(processObj)
-      }
-      
-      processObj.queryResolve = (data) => {
-        clearTimeout(timeoutId)
-        processObj.isBusy = false
-        processObj.lastUsed = Date.now()
-        resolve(data)
       }
   
       proc.stdout.on("data", (chunk) => {
@@ -85,9 +79,6 @@ class Engine extends EventEmitter {
         error.sql = sql
         error.sqlite = msg
 
-        // console.log(error);
-
-        // ❗ REJECT QUERY AKTIF
         if (processObj.queryReject) {
           processObj.queryReject(error)
         } else {
@@ -112,7 +103,7 @@ class Engine extends EventEmitter {
       proc.stdin.write(".mode json\n")
       proc.stdin.write(".headers off\n")
   
-      // ⬅️ SENTINEL PALING PENTING
+      // Sentinel initialization
       proc.stdin.write(".print __READY__\n")
     })
   }
@@ -130,7 +121,8 @@ class Engine extends EventEmitter {
       }
   
       // === END sentinel (QUERY SELESAI) ===
-      if (line.trim() === "__END__") {
+      const expectedEnd = processObj.currentQueryId ? `__END_${processObj.currentQueryId}__` : "__END__"
+      if (line.trim() === expectedEnd) {
         const raw = processObj.responseBuffer.trim()
         processObj.responseBuffer = ""
   
@@ -145,10 +137,11 @@ class Engine extends EventEmitter {
           )
         }
   
-        // 🔥 RESET STATE (WAJIB)
+        // RESET STATE
         processObj.queryResolve = null
         processObj.queryReject = null
         processObj.currentQuery = null
+        processObj.currentQueryId = null
         processObj.isBusy = false
         processObj.lastUsed = Date.now()
   
@@ -166,9 +159,13 @@ class Engine extends EventEmitter {
   async _getAvailableProcess() {
     // 1️⃣ CARI YANG IDLE
     let proc = this.processPool.find(p => !p.isBusy)
-    if (proc) return proc
+    if (proc) {
+      proc.isBusy = true
+      proc.lastUsed = Date.now()
+      return proc
+    }
   
-    // 2️⃣ CARI STALE / ZOMBIE (> 5 detik)
+    // 2️⃣ CARI STALE / ZOMBIE (> timeout)
     const now = Date.now()
     const stale = this.processPool.find(
       p => p.isBusy && (now - p.lastUsed > this.options.timeout)
@@ -176,26 +173,43 @@ class Engine extends EventEmitter {
   
     if (stale) {
       this._restartProcess(stale)
-      // beri waktu process baru init
       await new Promise(r => setTimeout(r, 50))
-      return this.processPool.find(p => !p.isBusy)
+      let available = this.processPool.find(p => !p.isBusy)
+      if (available) {
+        available.isBusy = true
+        available.lastUsed = Date.now()
+        return available
+      }
     }
   
     // 3️⃣ BOLEH BUAT BARU?
     if (this.processPool.length < this.options.poolSize) {
-      return await this._createProcess()
+      const created = await this._createProcess()
+      created.isBusy = true
+      created.lastUsed = Date.now()
+      return created
     }
   
-    // 4️⃣ TUNGGU SEBENTAR & COBA LAGI
-    await new Promise(r => setTimeout(r, 50))
-    return this.processPool.find(p => !p.isBusy)
+    // 4️⃣ TUNGGU SEBENTAR & COBA LAGI (Polling loop dengan timeout)
+    const waitStart = Date.now()
+    while (Date.now() - waitStart < this.options.timeout) {
+      await new Promise(r => setTimeout(r, 20))
+      let available = this.processPool.find(p => !p.isBusy)
+      if (available) {
+        available.isBusy = true
+        available.lastUsed = Date.now()
+        return available
+      }
+    }
+
+    return null
   }
 
   async _executeWithRetry(sql, retries = 0) {
     try {
       const processObj = await this._getAvailableProcess()
 
-      //clean sql
+      // clean sql
       sql = sql.replace(/;+\s*$/, "")
 
       if (!processObj) {
@@ -203,6 +217,7 @@ class Engine extends EventEmitter {
       }
   
       return new Promise((resolve, reject) => {
+        const queryId = ++this._queryCounter
         const timeoutId = setTimeout(() => {
           processObj.queryReject?.(
             new Error(`Query timeout after ${this.options.timeout}ms`)
@@ -212,6 +227,7 @@ class Engine extends EventEmitter {
   
         processObj.isBusy = true
         processObj.currentQuery = sql
+        processObj.currentQueryId = queryId
   
         processObj.queryResolve = (data) => {
           clearTimeout(timeoutId)
@@ -224,11 +240,9 @@ class Engine extends EventEmitter {
         }
   
         trace(sql)
-        // console.log(sql)
         processObj.proc.stdin.write(
-          sql + ";\n.print __END__\n"
+          sql + ";\n.print __END_" + queryId + "__\n"
         )
-
       })
   
     } catch (error) {
@@ -352,18 +366,25 @@ class Engine extends EventEmitter {
   async close() {
     this.isClosing = true
   
-    for (const p of this.processPool) {
-      p.isBusy = false
-    }
-  
-    for (const process of this.processPool) {
-      if (process.proc && !process.proc.killed) {
-        process.proc.stdin.end(".exit\n")
-        process.proc.kill()
+    const pool = [...this.processPool]
+    this.processPool = []
+
+    for (const processObj of pool) {
+      if (processObj.proc && !processObj.proc.killed) {
+        try {
+          processObj.proc.stdin.write(".exit\n")
+          processObj.proc.stdin.end()
+        } catch {}
+        setTimeout(() => {
+          try {
+            if (processObj.proc && !processObj.proc.killed) {
+              processObj.proc.kill()
+            }
+          } catch {}
+        }, 100)
       }
     }
   
-    this.processPool = []
     this.emit("closed")
   }
 }

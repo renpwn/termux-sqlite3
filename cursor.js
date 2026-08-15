@@ -185,11 +185,11 @@ class Cursor {
   
       while (this.buffer.length > 0) {
         const row = this.buffer.shift()
-  
-        if (this.buffer.length >= this.highWaterMark && !this.isFetching) {
+
+        if (this.buffer.length <= this.lowWaterMark && !this.isFetching && !this.done) {
           this._fetchChunk().catch(console.error)
         }
-  
+
         yield row
       }
     }

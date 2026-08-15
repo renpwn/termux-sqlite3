@@ -145,10 +145,10 @@ export default class Database {
     lastInsertRowid: number
   }>
 
-  transaction<T = any>(
-    fn: (tx: TransactionContext) => Promise<T> | T,
+  transaction<F extends (...args: any[]) => any>(
+    fn: F,
     options?: TransactionOptions
-  ): Promise<T>
+  ): (...args: Parameters<F>) => Promise<ReturnType<F> extends Promise<infer U> ? U : ReturnType<F>>
 
   pragma(name: string, value?: any): Promise<any>
 

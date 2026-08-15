@@ -1,6 +1,5 @@
-# termux-sqlite3
+# @renpwn/termux-sqlite3
 
-  
 ![Termux](https://img.shields.io/badge/Termux-Android-00B0F0?logo=android)
 ![SQLite](https://img.shields.io/badge/SQLite-3-003B57?logo=sqlite)
 ![Node.js](https://img.shields.io/badge/Node.js-18+-339933?logo=nodedotjs)
@@ -11,35 +10,27 @@
 ![repo size](https://img.shields.io/github/repo-size/renpwn/termux-sqlite3)
 ![types](https://img.shields.io/npm/types/@renpwn/termux-sqlite3)
 
-`termux-sqlite3` adalah wrapper SQLite berbasis JavaScript murni (JS-only) yang dirancang khusus untuk lingkungan **Termux** di Android.
+`@renpwn/termux-sqlite3` adalah wrapper SQLite berbasis JavaScript murni (JS-only) yang dirancang khusus untuk lingkungan **Termux** di Android. Library ini memberikan pengalaman pengembangan yang serupa dengan `better-sqlite3`, namun tanpa memerlukan proses kompilasi modul binari (native addons) yang seringkali sulit dilakukan di perangkat seluler.
 
-termux-sqlite3 adalah wrapper SQLite berbasis JavaScript murni (JS-only) yang dirancang khusus untuk lingkungan Termux di Android. Library ini memberikan pengalaman pengembangan yang serupa dengan better-sqlite3, namun tanpa memerlukan proses kompilasi modul binari (native addons) yang seringkali sulit dilakukan di perangkat seluler.
-
-Library ini bekerja dengan melakukan spawning terhadap proses sqlite3 sistem dan berkomunikasi melalui antarmuka JSON yang efisien.
+Library ini bekerja dengan melakukan spawning terhadap proses `sqlite3` sistem dan berkomunikasi melalui antarmuka JSON streaming yang efisien.
 
 ## ✨ Fitur Utama
 
-* **🚫 Zero Native Dependencies:** Tidak memerlukan `node-gyp`, Python, atau kompilasi C++; hanya membutuhkan binary `sqlite3` terinstal di Termux.
-* **📚 API Mirip Better-sqlite3:** Menggunakan pola `prepare()`, `get()`, dan `all()` yang familiar.
-* **💾 Manajemen Memori Pintar:** Dilengkapi dengan sistem cursor yang menyesuaikan ukuran pengambilan data (*chunk size*) secara dinamis berdasarkan penggunaan RAM.
-* **🔒 Transaksi Terintegrasi:** Dukungan bawaan untuk transaksi atomik dengan *automatic rollback* jika terjadi kesalahan.
-* **🛡️ SQL Binding Aman:** Mencegah SQL Injection dengan sistem binding parameter menggunakan sintaks `:key` atau `?`.
+* **🚫 Zero Native Dependencies:** Tidak memerlukan `node-gyp`, Python, atau toolchain C++; hanya membutuhkan binary `sqlite3` terinstal di Termux.
+* **📚 API Mirip Better-sqlite3:** Menggunakan pola `prepare()`, `get()`, `all()`, `run()`, dan `transaction()`.
+* **💾 Manajemen Memori Pintar:** Dilengkapi dengan sistem cursor adaptif yang menyesuaikan ukuran pengambilan data (*chunk size*) secara dinamis berdasarkan penggunaan RAM.
+* **🔒 Transaksi Terintegrasi:** Dukungan bawaan untuk transaksi atomik dengan *savepoints*, *automatic rollback*, dan retry otomatis.
+* **🛡️ SQL Binding Aman & Lengkap:** Mencegah SQL Injection dengan sistem tokenized binding parameter `:key` atau `?`, termasuk dukungan data teks, angka, boolean, JSON, dan `Buffer` (BLOB).
 * **🔍 Query Plan Analysis:** Memudahkan optimasi query dengan fitur `explain()`.
-* **⚡ Performa Optimal:** Menggunakan JSON streaming untuk komunikasi yang efisien dengan proses SQLite.
-* **🔄 Connection Pooling:** Mendukung multiple connections untuk *concurrent queries*.
-* **⚡ Cepat & Stabil:** SQLite CLI dengan streaming JSON real-time
-* **🧠 Cursor Adaptif:** chunking otomatis hemat memori untuk tabel besar
-* **🔒 Binding SQL Aman:** parameter posisi & bernama (anti SQL injection)
-* **🔄 Dukungan Transaksi:** retry otomatis, savepoint, dan isolation level
-* **📦 Split & Rebuild Database:** publish SQLite besar ke GitHub & npm dengan aman
-* **🧩 Desain Termux-first:** berjalan langsung di Android nyata
+* **⚡ Performa Optimal & Stabil:** Menggunakan JSON streaming dengan dynamic query sentinel unik dan connection pooling.
+* **📦 Split & Rebuild Database:** Memecah database besar menjadi beberapa part untuk didistribusikan via Git / npm tanpa Git LFS.
+* **🧩 Desain Termux-first:** Dibuat dan diuji langsung untuk lingkungan Android Termux.
 
 ## 📋 Prasyarat
 
-* **Termux** (Disarankan versi [F-Droid](https://f-droid.org/en/packages/com.termux/) untuk update terbaru)
+* **Termux** (Disarankan versi [F-Droid](https://f-droid.org/en/packages/com.termux/))
 * **Node.js** (Versi 14 atau yang lebih baru)
 * **SQLite3 Binary** (Terinstal di sistem Termux)
-
 
 ## 🚀 Instalasi
 
@@ -57,14 +48,10 @@ sqlite3 --version
 node --version
 ```
 
-2. Instal Library termux-sqlite3
+2. Instal Library
 
 ```bash
-# Instal dari GitHub (rekomendasi untuk versi terbaru)
-npm install https://github.com/renpwn/termux-sqlite3
-
-# Atau jika tersedia di npm registry
-npm install termux-sqlite3
+npm install @renpwn/termux-sqlite3
 ```
 
 ## 📖 Quick Start
@@ -72,7 +59,7 @@ npm install termux-sqlite3
 Inisialisasi Database
 
 ```javascript
-const Database = require('termux-sqlite3');
+const Database = require('@renpwn/termux-sqlite3');
 
 // Buka koneksi database (file akan dibuat jika tidak ada)
 const db = new Database('myapp.db');
@@ -80,9 +67,8 @@ const db = new Database('myapp.db');
 // Dengan opsi tambahan
 const db2 = new Database('myapp.db', {
   timeout: 10000,           // Timeout 10 detik per query
-  poolSize: 2,              // 2 koneksi paralel
-  busyTimeout: 10000,       // Tunggu 10 detik jika database locked
-  adaptiveChunking: true    // Aktifkan adaptive memory management
+  poolSize: 1,              // Pool size koneksi
+  busyTimeout: 10000        // Tunggu 10 detik jika database locked
 });
 
 // Event listener untuk error handling
@@ -183,15 +169,25 @@ await db.exec('CREATE INDEX idx_users_email ON users(email)');
 
 db.transaction(fn, options)
 
-Menjalankan blok kode dalam transaksi.
+Membuat fungsi transaksi yang dapat dipanggil (transaction executor) atau dijalankan langsung.
 
 Contoh:
 
 ```javascript
+// Pola 1: Membuat fungsi transaksi (better-sqlite3 style)
+const transferMoney = db.transaction(async (fromId, toId, amount) => {
+  await db.run('UPDATE accounts SET balance = balance - ? WHERE id = ?', [amount, fromId]);
+  await db.run('UPDATE accounts SET balance = balance + ? WHERE id = ?', [amount, toId]);
+});
+
+// Eksekusi transaksi
+await transferMoney(1, 2, 100);
+
+// Pola 2: Eksekusi langsung
 await db.transaction(async () => {
   await db.run('INSERT INTO accounts (balance) VALUES (100)');
   await db.run('INSERT INTO transactions (amount) VALUES (100)');
-});
+})();
 ```
 
 db.pragma(name, value)
@@ -383,24 +379,28 @@ for await (const row of stmt.iterate(options)) {
 Transaksi Sederhana
 
 ```javascript
-await db.transaction(async () => {
-  await db.run('UPDATE accounts SET balance = balance - 100 WHERE id = 1');
-  await db.run('UPDATE accounts SET balance = balance + 100 WHERE id = 2');
+const updateBalances = db.transaction(async (user1, user2, amount) => {
+  await db.run('UPDATE accounts SET balance = balance - ? WHERE id = ?', [amount, user1]);
+  await db.run('UPDATE accounts SET balance = balance + ? WHERE id = ?', [amount, user2]);
 });
+
+await updateBalances(1, 2, 100);
 ```
 
 Transaksi dengan Isolation Level
 
 ```javascript
-await db.transaction(async () => {
+const immediateTrx = db.transaction(async () => {
   // Operasi database
 }, { isolationLevel: 'IMMEDIATE' });
+
+await immediateTrx();
 ```
 
 Savepoints (Nested Transactions)
 
 ```javascript
-await db.transaction(async (tx) => {
+const complexTx = db.transaction(async (tx) => {
   const sp1 = await tx.savepoint();
   
   try {
@@ -410,6 +410,8 @@ await db.transaction(async (tx) => {
     await tx.rollbackTo(sp1);
   }
 }, { savepoints: true });
+
+await complexTx();
 ```
 
 Batch Operations
@@ -429,12 +431,12 @@ await db.transaction.batch(db, operations, {
 });
 ```
 
-🔍 Debugging dan Optimasi
+## 🔍 Debugging dan Optimasi
 
 Aktifkan Debug Mode
 
 ```javascript
-const { enableDebug } = require('termux-sqlite3/debug');
+const { enableDebug } = require('@renpwn/termux-sqlite3/debug');
 enableDebug(true); // Semua query akan dicetak ke console.error
 ```
 
@@ -464,7 +466,7 @@ await db.backup('/sdcard/backup.db');
 Aplikasi To-Do List
 
 ```javascript
-const Database = require('termux-sqlite3');
+const Database = require('@renpwn/termux-sqlite3');
 
 class TodoApp {
   constructor() {
@@ -543,7 +545,7 @@ main().catch(console.error);
 Aplikasi Logging dengan Cursor
 
 ```javascript
-const Database = require('termux-sqlite3');
+const Database = require('@renpwn/termux-sqlite3');
 const fs = require('fs');
 
 class Logger {
@@ -741,15 +743,16 @@ Kontribusi sangat diterima! Berikut cara berkontribusi:
 2. **Buat branch fitur** baru:
    ```bash
    git checkout -b fitur/amazing-feature
-
- * Commit perubahan Anda:
+   ```
+3. **Commit perubahan Anda**:
+   ```bash
    git commit -m 'Add amazing feature'
-
- * Push ke branch tersebut:
+   ```
+4. **Push ke branch**:
+   ```bash
    git push origin fitur/amazing-feature
-
- * Buat Pull Request melalui GitHub.
-<!-- end list -->
+   ```
+5. **Buat Pull Request** melalui GitHub.
 
 ---
 

@@ -82,77 +82,7 @@ class Database {
   
     return async (...args) => {
       await ready()
-      return transaction(engine, () => fn(...args), options)
-    }
-  }
-
-  /*transaction(fn, options) {
-    //return transaction(this.engine, fn, options)
-    return async(...args) => {
-      await this._ready()
-      const trx = transaction(this.engine, fn, options)
-      return trx(...args)
-    }
-  }
-  
-  /*transaction(fn, options) {
-    const engine = this.engine
-    const ready = this._ready.bind(this)
-  
-    return async (...args) => {
-      await ready()
-  
-      // ⬇️ transaction() SUDAH EKSEKUSI
-      return transaction(engine, async () => {
-        return fn(...args)
-      }, options)
-    }
-  }*/
-  
-  transactionold(fn, options) {
-    if (fn.constructor.name === 'AsyncFunction') {
-      throw new Error(
-        'transaction callback MUST NOT be async'
-      )
-    }
-  
-    const engine = this.engine
-    const ready = this._ready.bind(this)
-  
-    // 🔑 BUAT TRANSACTION FUNCTION SEKALI
-    const trx = transaction(engine, fn, options)
-  
-    // 🔑 RETURN FUNCTION (API CONTRACT)
-    return async (...args) => {
-      await ready()
-      return trx(...args)
-    }
-  }
-  
-  transactionoldz(fn, options) {
-    if (fn.constructor.name === 'AsyncFunction') {
-      throw new Error(
-        'transaction callback MUST NOT be async'
-      )
-    }
-  
-    const engine = this.engine
-    const ready = this._ready.bind(this)
-  
-    // ⬇️ RETURN EXECUTOR FUNCTION
-    return async (...args) => {
-      await ready()
-  
-      // 🔑 PANGGIL transaction SETIAP EKSEKUSI
-      const trx = transaction(engine, fn, options)
-  
-      if (typeof trx !== 'function') {
-        throw new TypeError(
-          'Internal error: transaction() did not return a function'
-        )
-      }
-  
-      return trx(...args)
+      return transaction(engine, (tx) => fn(...args, tx), options)
     }
   }
 
