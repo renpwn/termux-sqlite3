@@ -1,6 +1,6 @@
 {
   "name": "@renpwn/termux-sqlite3",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "High-performance SQLite3 for Termux Android with better-sqlite3-like API",
   "main": "index.js",
   "types": "index.d.ts",
@@ -35,8 +35,7 @@
   },
   "homepage": "https://github.com/renpwn/termux-sqlite3#readme",
   "engines": {
-    "node": ">=14.0.0",
-    "termux": ">=0.118.0"
+    "node": ">=14.0.0"
   },
   "scripts": {
     "test": "node test/basic.test.js",
@@ -64,14 +63,6 @@
     "lib/",
     "README.md",
     "LICENSE"
-  ],
-  "os": [
-    "android"
-  ],
-  "cpu": [
-    "arm",
-    "arm64",
-    "x64"
   ],
   "optionalDependencies": {
     "sqlite3": ">=3.40.0"

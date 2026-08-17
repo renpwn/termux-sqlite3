@@ -1,6 +1,7 @@
 const { spawn } = require("child_process")
 const { trace } = require("./lib/debug")
 const EventEmitter = require("events")
+const os = require("os")
 
 class Engine extends EventEmitter {
   constructor(filename, options = {}) {
@@ -32,9 +33,13 @@ class Engine extends EventEmitter {
 
   async _createProcess() {
     return new Promise((resolve, reject) => {
+      const defaultTmp = process.platform === 'android'
+        ? "/data/data/com.termux/files/usr/tmp"
+        : os.tmpdir()
+
       const proc = spawn("sqlite3", ["-json", this.filename], {
         stdio: ["pipe", "pipe", "pipe"],
-        env: { ...process.env, SQLITE_TMPDIR: "/data/data/com.termux/files/usr/tmp" }
+        env: { ...process.env, SQLITE_TMPDIR: process.env.SQLITE_TMPDIR || defaultTmp }
       })
       
       const processObj = {
